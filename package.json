@@ -1,0 +1,26 @@
+{
+  "name": "spiretranspiler",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "dev": "npm run build-win && dist\\spireTranspiler.exe",
+    "build-win": "npx tsc && npx nexe dist/index.js -t windows-x64-14.15.3 -o dist/spireTranspiler.exe",
+    "build-linux": "npx tsc && npx nexe dist/index.js -t linux-x64-14.15.3 -o dist/spireTranspiler",
+    "build-macos": "npx tsc && npx nexe dist/index.js -t mac-x64-14.15.3 -o dist/spireTranspiler"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "devDependencies": {
+    "@types/node": "^22.14.0",
+    "@types/readline-sync": "^1.4.8",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.8.3"
+  },
+  "dependencies": {
+    "adm-zip": "^0.5.16",
+    "fast-xml-parser": "^5.2.0",
+    "readline-sync": "^1.4.10"
+  }
+}

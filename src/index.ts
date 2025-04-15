@@ -1,0 +1,210 @@
+//TODO:
+//* Obsługa bloków w bloku czyli np że ma wypisać na konsoli coś co zwraca X blok, a nie text.
+//* Wprowadzenie zasady DRY (Don't Repeat Yourself).
+//? init git i dodanie na githuba (póki co jako prowatny).
+//! Sprawdzanie czy input w bloku faktycznie będzie tego typu który potrzebóje.
+//! Wykrywa czy język to ten który jest wybrany i czy każdy modół wspiera wybrany język. No i przy tłumaczeniu tłumaczy na ten wybrany.
+//! Jeśli niema inputu a jest require to zwraca błąd. Lub jak nie jest require i go nie ma to ustawia na wartość domyślną.
+
+
+
+import { askForFileLocation } from "./ts/userComunication";
+import { readFileFromZip, listModulesAndBlocks } from "./ts/zipOperation";
+
+import { XMLParser } from "fast-xml-parser";
+
+
+type ParsedCode = Record<string, {
+  on_start: Record<string, Array<Record<string, Array<{ '#text': string }>>>>;
+}>;
+type InputListItem = {
+  name: string;
+  type: string;
+  required: string;
+  default: string;
+};
+type InputMap = Record<string, string | unknown>;
+type RawAttributeValue = { [key: string]: Array<{ '#text'?: string }> };
+
+
+let whichScript = 0;
+const lang = "rs";
+
+let code = '';
+
+let inputList: InputListItem[] = [];
+let input: InputMap = {};
+
+const filePath = askForFileLocation();
+const config = JSON.parse(readFileFromZip(filePath, "config.json") || "{}");
+if (config == "{}") {
+  console.error("Nie znaleziono pliku konfiguracyjnego.");
+  process.exit(1);
+}
+
+let allModules = listModulesAndBlocks(filePath);
+const blockPathMap: Record<string, string> = {};
+for (const [moduleName, blocks] of Object.entries(allModules)) {
+  for (const blockName of blocks) {
+    blockPathMap[blockName] = `modules/${moduleName}/${blockName}.xml`;
+  }
+}
+console.log(blockPathMap);
+
+
+const parser = new XMLParser({
+  ignoreAttributes: false,
+  attributeNamePrefix: "@_",
+  allowBooleanAttributes: true,
+  parseTagValue: true,
+  parseAttributeValue: true,
+  trimValues: true,
+  cdataPropName: "cdata",
+  processEntities: false,
+  preserveOrder: true,
+});
+const parsedCode = parser.parse(
+  readFileFromZip(filePath, config.entryPoints[0]) || "{}"
+);
+
+
+// The main loop that runs each block in the on_start script in turn.
+for(let i = 0; i < Object.entries(parsedCode[whichScript].on_start).length; i++){
+  console.log("---------------------------------");
+
+  const blockName = Object.entries((parsedCode[whichScript].on_start)[i])[0][0];
+  const blockPath = blockPathMap[blockName];
+  const blockContent = blockPath ? readFileFromZip(filePath, blockPath) : "{}";
+  const parsedBlockContent = parser.parse(blockContent || "{}");
+
+  inputsFromDeclaration(parsedBlockContent);
+  inputsFromUser(Object.entries(parsedCode[whichScript].on_start)[i][1]);
+
+  type CodeEntry = { cdata: Array<{ '#text': string }> };
+  for (let j = 0; j < parsedBlockContent.length; j++) {
+    const entry = Object.entries(parsedBlockContent?.[j])?.[0];
+  
+    if (String(entry?.[0]) === 'code') {
+      const raw = entry?.[1] as CodeEntry[];
+  
+      const cdataText = raw?.[0]?.cdata?.[0]?.['#text'];
+      if (cdataText) {
+        console.log("Zawartość CDATA:", cdataText);
+        eval(cdataText);
+      }
+    }
+  }
+
+  console.log("---------------------------------");
+}
+
+
+console.log(code);
+
+
+//!  C:\Users\Mateusz\Desktop\test.srl
+
+//We set the inputList variable to what this declared block supports all inputs. Example
+function inputsFromDeclaration(parsedBlockContent: Array<ParsedCode>){
+
+
+  const inputsRaw = (()=>{
+    for (const node of parsedBlockContent) {
+      if (node["inputs"]) return node["inputs"];
+    }
+    return null;
+  })();
+
+
+  //  [
+  //    { name: 'name', type: 'string', required: true },
+  //    { name: 'value', type: 'any', required: true }
+  //  ]
+  // 
+  if (Array.isArray(inputsRaw)) {
+    for (const inputNode of inputsRaw) {
+      const attrs = inputNode[":@"];
+      if (attrs) {
+        const cleaned: Record<string, any> = {};
+        for (const key in attrs) {
+          const cleanedKey = key.replace(/^@_/, "");
+          cleaned[cleanedKey] = attrs[key];
+        }
+        inputList.push(cleaned as InputListItem);
+      }
+    }
+  }
+}
+// this piece of code deals with: Inputs to a block declared and provided by the user
+function inputsFromUser(rawEntry: any){
+  const inputRawValues = Array.isArray(rawEntry) ? rawEntry[0] : rawEntry;
+  
+  console.log("ogłólnie w tym bloku:");
+  console.log(inputList)
+
+  console.log("w tym specyficznym bloku:");
+
+  const allAttributesInThisBlock = Object.entries(inputRawValues)[0]?.[1] as RawAttributeValue[] ?? [];
+  
+  for (let j = 0; j < inputList.length; j++) {
+    const inputName = inputList[j].name;
+    console.log(inputName + ":");
+  
+    for (let k = 0; k < allAttributesInThisBlock.length; k++) {
+      const attribute = allAttributesInThisBlock[k];
+  
+      if (Object.prototype.hasOwnProperty.call(attribute, inputName)) {
+        const rawValue = attribute[inputName];
+  
+        if (Array.isArray(rawValue) && rawValue[0]?.['#text']) {
+          input[inputName] = rawValue[0]['#text'];
+        } else {
+          console.log("Wykryto Blok:", rawValue?.[0]);
+          input[inputName] = blockDetected(rawValue?.[0]); // <-- ważne!
+        }
+  
+        break;
+      }
+    }
+  }
+}
+
+
+function blockDetected(data: object): string {
+
+  const blockName = Object.entries(data)?.[0]?.[0];
+  const blockPath = blockPathMap[blockName];
+  const blockContent = blockPath ? readFileFromZip(filePath, blockPath) : "{}";
+  const parsedBlockContent = parser.parse(blockContent || "{}");
+
+  inputsFromDeclaration(parsedBlockContent);
+  inputsFromUser(Array.isArray(data) ? data[0] : data);
+
+  
+  for (let j = 0; j < parsedBlockContent.length; j++) {
+    const entry = Object.entries(parsedBlockContent?.[j])?.[0];
+
+    if (String(entry?.[0]) === 'code') {
+      const raw = entry?.[1] as { cdata: Array<{ '#text': string }> }[];
+
+      const cdataText = raw?.[0]?.cdata?.[0]?.['#text'];
+      if (cdataText) {
+        // Zamiast eval, użyj funkcji jako template literal
+        const fn = new Function("input", "addAtBlockLocation", cdataText);
+        let localCode = '';
+        const localAdder = (s: string) => localCode += s;
+        fn(input, localAdder);
+        return localCode;
+      }
+    }
+  }
+
+  return '';
+}
+
+
+
+function addAtBlockLocation(data: string){
+  code += data;
+  console.log("DODANO!!!!!!!!!")
+}
