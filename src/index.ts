@@ -1,26 +1,21 @@
-//TODO:
-//* Wprowadzenie zasady DRY (Don't Repeat Yourself).
-//* init git i dodanie na githuba (póki co jako prowatny).
-//! Obsługa bloków w bloku czyli np że ma wypisać na konsoli coś co zwraca X blok, a nie text / REMONT!
-//! ogarnąć console.log()
-//! Sprawdzanie czy input w bloku faktycznie będzie tego typu który potrzebóje.
-//! Wykrywa czy język to ten który jest wybrany i czy każdy modół wspiera wybrany język. No i przy tłumaczeniu tłumaczy na ten wybrany.
-//! Jeśli niema inputu a jest require to zwraca błąd. Lub jak nie jest require i go nie ma to ustawia na wartość domyślną.
-
-//TODO:  POMYSŁ NA DZIAŁANIE TRANSPILERA
-//?      Lecimy pokolei, czyli przykład z wypisanie czegoś na konsoli:
-//?      println!("{   <-- zostało dodane po czy dochodzimy do input.value
-//?      gdzie sprawdzamy czy jest blok jeśli tak to sczytujemy blok z tą zasadą
-//?      jeśli nie to podajemy dane i lecimy dalej. Czyli kończymy to z
-//?      }"); całe. Przydało by się jescze dodać funkcję dla developerów
-//?      IS_THERE_BLOCK_INSIDE("nazwa inputu"); zwrawa true/false
-
+// TODO:
+// * Wprowadzenie zasady DRY (Don't Repeat Yourself).
+// * init git i dodanie na githuba (póki co jako prowatny).
+// * ogarnąć console.log()
+// * Jeśli niema inputu a jest require to zwraca błąd. Lub jak nie jest require i go nie ma to ustawia na wartość domyślną.
+// * Obsługa bloków w bloku czyli np że ma wypisać na konsoli coś co zwraca X blok, a nie text / REMONT!
+// ? dodanie obsługi wielu typów w inpucie i ustalenie wreście raz na zwarsze jakie typy będzie miał spireTranspiler!
+// ! dodać funkcję specjalną która sprawdza czy w inpucie jest blok 
+// ! Wykrywa czy język to ten który jest wybrany i czy każdy modół wspiera wybrany język. No i przy tłumaczeniu tłumaczy na ten wybrany.
+// ! dodać więcej modółów
+// ! zrobić że jak wygeneruje już kod to tworzy plik i sam go kompiluje na wykonywalny
 
 
 import { askForFileLocation } from "./ts/userComunication";
 import { readFileFromZip, listModulesAndBlocks } from "./ts/zipOperation";
 
 import { XMLParser } from "fast-xml-parser";
+
 
 
 type ParsedCode = Record<string, {
@@ -36,15 +31,18 @@ type InputMap = Record<string, string | unknown>;
 type RawAttributeValue = { [key: string]: Array<{ '#text'?: string }> };
 
 
+
 let whichScript = 0;
-const lang = "rs";
+let lang = "rust";
+export let devMode = true;
 
 let code = '';
-
-let inputList: InputListItem[] = [];
 let input: InputMap = {};
+let inputReturn: InputMap = {}
 let rawInput: InputMap = {};
+let customData: any = {};
 
+console.clear();
 const filePath = askForFileLocation();
 const config = JSON.parse(readFileFromZip(filePath, "config.json") || "{}");
 if (config == "{}") {
@@ -52,14 +50,38 @@ if (config == "{}") {
   process.exit(1);
 }
 
-let allModules = listModulesAndBlocks(filePath);
+const allModules = listModulesAndBlocks(filePath);
+// We create a list of paths to all blocks
 const blockPathMap: Record<string, string> = {};
 for (const [moduleName, blocks] of Object.entries(allModules)) {
   for (const blockName of blocks) {
     blockPathMap[blockName] = `modules/${moduleName}/${blockName}.xml`;
   }
 }
-console.log(blockPathMap);
+
+// Runs pre-code from modules
+if(devMode)console.log("<-------------------- ( ŁADOWANIE KODU Z MODUŁÓW ) -------------------->");
+for(let i = 0; i < Object.entries(allModules).length; i++){
+  const moduleName = Object.entries(allModules)[i][0];
+  const moduleConfigTEXT = readFileFromZip(filePath, `modules/${moduleName}/config.json`);
+  if (moduleConfigTEXT) {
+    const moduleConfig = JSON.parse(moduleConfigTEXT);
+      if(devMode)
+      console.log(`Ładujemy kod z modułu: ${moduleName}`);
+    if(moduleConfig.runCode == undefined){
+      continue;
+    }
+    
+    for(let j = 0; j < (moduleConfig.runCode[lang]).length; j++){
+      const localCode = readFileFromZip(filePath, `modules/${moduleName}/${ (moduleConfig.runCode[lang])[j] }`)
+      if (localCode) {
+        eval(localCode)
+      }
+    }
+    
+  }
+}
+if(devMode)console.log("------------------------------------------------------------------------");
 
 
 const parser = new XMLParser({
@@ -80,17 +102,18 @@ const parsedCode = parser.parse(
 
 // The main loop that runs each block in the on_start script in turn.
 for(let i = 0; i < Object.entries(parsedCode[whichScript].on_start).length; i++){
-  console.log("---------------------------------");
+  if(devMode){
+    console.log("\n")
+    console.log(`<-------------------- ( ${Object.entries((parsedCode[whichScript].on_start)[i])[0][0]} ) -------------------->`);
+  }
 
   const blockName = Object.entries((parsedCode[whichScript].on_start)[i])[0][0];
   const blockPath = blockPathMap[blockName];
   const blockContent = blockPath ? readFileFromZip(filePath, blockPath) : "{}";
   const parsedBlockContent = parser.parse(blockContent || "{}");
 
-  console.log("przetwarzamy blok: "+blockName);
-
-  inputsFromDeclaration(parsedBlockContent);
-  inputsFromUser(Object.entries(parsedCode[whichScript].on_start)[i][1], true);
+  const inputList = inputsFromDeclaration(parsedBlockContent);
+  input = inputsFromUser(Object.entries(parsedCode[whichScript].on_start)[i][1], true, inputList);
 
   
   type CodeEntry = { cdata: Array<{ '#text': string }> };
@@ -102,24 +125,33 @@ for(let i = 0; i < Object.entries(parsedCode[whichScript].on_start).length; i++)
   
       const cdataText = raw?.[0]?.cdata?.[0]?.['#text'];
       if (cdataText) {
-        //console.log("Zawartość CDATA:", cdataText);
         eval(cdataText);
       }
     }
   }
   
-  console.log("---------------------------------");
+  if(devMode)
+  console.log('------------------------------------------------------------');
 }
 
 
+
+console.log("\n");
+console.log(`WYGENEROWANY KOD JĘZYKA ${(lang).toUpperCase()}:`)
+console.log("\n");
 console.log(code);
+console.log("\n");
 
 
-//!  C:\Users\Mateusz\Desktop\test.srl
+// @  C:\Users\Mateusz\Desktop\test.srl
+
+
+
+
 
 //We set the inputList variable to what this declared block supports all inputs. Example
 function inputsFromDeclaration(parsedBlockContent: Array<ParsedCode>){
-  inputList = [];
+  let inputList: InputListItem[] = [];
 
   const inputsRaw = (()=>{
     for (const node of parsedBlockContent) {
@@ -147,75 +179,134 @@ function inputsFromDeclaration(parsedBlockContent: Array<ParsedCode>){
       }
     }
   }
-  console.log(`Z inputami: ${JSON.stringify(inputList)}`);
-}
-// this piece of code deals with: Inputs to a block declared and provided by the user
-function inputsFromUser(rawEntry: any, fromMainLoop: boolean){
-  if(fromMainLoop){
-    rawInput = rawEntry;
+
+  if(devMode){
+    console.log(`Z inputami w definicji bloku:`);
+    console.log(inputList);
+    console.log("");
   }
+
+  return inputList;
+}
+
+
+// this piece of code deals with: Inputs to a block declared and provided by the user
+function inputsFromUser(rawEntry: any, fromMain: boolean, inputList: any){
+  let localInputs:any = {};
+
+  if(fromMain)
+  rawInput = rawEntry;
 
   const inputRawValues = Array.isArray(rawEntry) ? rawEntry[0] : rawEntry;
+
+
+
   const allAttributesInThisBlock = Object.entries(inputRawValues)[0]?.[1] as RawAttributeValue[] ?? [];
 
-  for (let inputDef of inputList) {
-    const inputName = inputDef.name;
-    let found = false;
+  if(devMode){
+    console.log("Inputy w tym specyficznym bloku:");
+    console.log(JSON.stringify(allAttributesInThisBlock));
+    console.log("");
+  }
 
-    for (let attribute of allAttributesInThisBlock) {
-      if (attribute.hasOwnProperty(inputName)) {
-        const rawValue = attribute[inputName];
+  let doWeHaveThisInput  = false;
 
-        if (Array.isArray(rawValue) && rawValue[0]?.['#text']) {
-          console.log(`${inputName}: ${rawValue[0]['#text']}`);
-          input[inputName] = rawValue[0]['#text'];
-        } else {
-          console.log(`Wykryto blok w ${inputName}, przesyłamy do analizy:`, rawValue?.[0]);
-          input[inputName] = returnBlockDetected(rawValue?.[0]); // Upewnij się, że to coś zwraca!
+  //powarzamy tyle razy ile jest inputów w deklaracji
+  for (let i = 0; i < inputList.length; i++) {
+
+
+    //powtarzamy tyle razy ile jest inputów w tym specyficznym przetwarzanym bloku
+    for (let j = 0; j < allAttributesInThisBlock.length; j++) {
+      
+      //szukamy czy w tym specyficznym bloku jest x input
+      if(Object.entries(allAttributesInThisBlock[j])?.[0]?.[0] == inputList[i].name){
+        if(devMode)
+        console.log("Wykryto wartość: "+inputList[i].name);
+        doWeHaveThisInput = true
+
+        const name = inputList[i].name;
+        const value = Object.entries(allAttributesInThisBlock[j])?.[0]?.[1]?.[0];
+
+        if(value["#text"] !== undefined){
+          if(devMode) console.log(`Która wynosi: ${value?.["#text"]}\n`);
+
+          if(inputList[i].type == typeof value?.["#text"] || inputList[i].type === "any"){
+            localInputs[name] = value?.["#text"]
+          }else{
+            console.error(`Zły typ danych podany dla inputu ${inputList[i].name}. Oczekuje ${inputList[i].type}, za to otrzymał ${typeof value?.["#text"]}`);
+            process.exit(1)
+          }
+        }else{
+          if(devMode) console.log('W której jest blok, przesyłamy do analizy');
+
+          const rawValue = allAttributesInThisBlock[j][name];
+          const returnBlockData = returnBlockDetected(rawValue?.[0]);
+
+          if(inputList[i].type == typeof returnBlockData || inputList[i].type === "any"){
+            localInputs[name] = returnBlockData
+          }else{
+            console.error(`Zły typ danych podany dla inputu ${inputList[i].name}. Oczekuje ${inputList[i].type}, za to otrzymał ${typeof returnBlockData}`);
+            process.exit(1)
+          }
+  
         }
 
-        found = true;
-        break;
+      }
+
+    }
+
+    //Debuging
+    if(doWeHaveThisInput == false){
+      if(inputList[i].required == true){
+        console.error(`Nie znaleziono w bloku ${Object.entries(rawEntry)[0][0]} inputu "${inputList[i].name}" który był wymagany!`);
+        process.exit(1);
+      }
+      if(inputList[i].required == false){
+        if(inputList[i].default){
+          localInputs[inputList[i].name] = inputList[i].default;
+        }else{
+          if (inputList[i].type.includes("string")) {
+            localInputs[inputList[i].name] = "unKnown";
+          } else if (inputList[i].type.includes("number")) {
+            localInputs[inputList[i].name] = 0;
+          } else if (inputList[i].type.includes("boolean")) {
+            localInputs[inputList[i].name] = false;
+          } else {
+            console.error(`Nieobsługiwany typ "${inputList[i].type}" dla inputu "${inputList[i].name}" w bloku ${Object.entries(rawEntry)[0][0]}.`);
+            process.exit(1);
+          }
+          if(devMode) 
+          console.error(`Input "${inputList[i].name}" w bloku ${Object.entries(rawEntry)[0][0]} nie został znaleziony, przypisano wartość domyślną dla typu "${inputList[i].type}".`);
+        }
       }
     }
 
-    if (!found) {
-      if (inputDef.required === "true") {
-        console.error(`Brak wymaganego inputu: ${inputName}`);
-        process.exit(1);
-      } else {
-        input[inputName] = inputDef.default;
-      }
-    }
+
   }
+
+  return localInputs;
+
 }
 
 
-
-function returnBlockDetected(data: object): any {
-
+function returnBlockDetected(data: object) {
   const blockName = Object.entries(data)?.[0]?.[0];
   const blockPath = blockPathMap[blockName];
   const blockContent = blockPath ? readFileFromZip(filePath, blockPath) : "{}";
   const parsedBlockContent = parser.parse(blockContent || "{}");
 
-  console.log(`Analizujemy ${blockName}`)
-
-  inputsFromDeclaration(parsedBlockContent);
-  inputsFromUser(Array.isArray(data) ? data[0] : data, false);
-
-  console.log("IIIIIIIIIIIIIIIIIIIIIIIIIIII");
-  console.log("parsedBlockContent: ");
-  console.log(parsedBlockContent);
-  console.log("IIIIIIIIIIIIIIIIIIIIIIIIIIII");
+  if(devMode) console.log(`Analizujemy blok: ${blockName}\n`);
   
+  const inputList = inputsFromDeclaration(parsedBlockContent);
+  let input = inputsFromUser(Array.isArray(data) ? data[0] : data, false, inputList);
+  inputReturn = input;
+
   // Pętla J i if szukają bloku code w .xml wybranego bloku
   for (let j = 0; j < parsedBlockContent.length; j++) {
     const entry = Object.entries(parsedBlockContent?.[j])?.[0];
 
     if (String(entry?.[0]) === 'code') {
       const raw = entry?.[1] as { cdata: Array<{ '#text': string }> }[];
-
 
       const cdataText = raw?.[0]?.cdata?.[0]?.['#text'];
       if (cdataText) {
@@ -225,25 +316,46 @@ function returnBlockDetected(data: object): any {
         fn(input, localAdder);
         return localCode;
       }
-
-
+    
     }
+    
   }
-
   return '';
 }
 
 
 
-function addAtBlockLocation(data: string){
-  code += data;
-  console.log("Dodano: "+data);
+function isTypeMatch(expected: string, value: any): boolean {
+  if (expected === "string") return typeof value === "string";
+  if (expected === "number") return !isNaN(Number(value));
+  if (expected === "boolean") return value === "true" || value === "false";
+  if (expected === "any") return true;
+  return false;
 }
 
 
-//TODO: Użyć funkcji GET aby uptościć kod w funkcjach: inputsFromDeclaration, inputsFromUser i można nawet returnBlockDetected
+
+
+
+
+
+
+
+function addAtBlockLocation(data: string){
+  code += data;
+  if(devMode)
+  console.log("Dodano kod: "+data);
+}
+
+function addOnTopOfTheFile(data: string){
+  code = data + "\n" + code;
+  if(devMode)
+  console.log("Dodano kod na góre pliku: "+data);
+}
+
+// TODO: Użyć funkcji GET aby uptościć kod w funkcjach: inputsFromDeclaration, inputsFromUser i można nawet returnBlockDetected i innych.
 function GET(path: (string | number)[]): any {
-  let current: any = rawInput;
+  let current: any = rawInput?.[Object.entries(rawInput)[0][0]];
 
   for (const step of path) {
     if (Array.isArray(current)) {
@@ -266,4 +378,44 @@ function GET(path: (string | number)[]): any {
   }
 
   return current;
+}
+
+function dataTypeOfInput(input: string){
+  if(devMode)
+  console.log(`Sprawdzamy typ inputu: ${input}`);
+
+  const blockInInput = Object.entries(GET([input])[0])[0][0];
+  const fileTEXT = readFileFromZip(filePath, blockPathMap[blockInInput]);
+  if(fileTEXT){
+    const file = parser.parse(fileTEXT)
+
+    //Szukamy return
+    for(let i = 0; i < file.length; i++){
+      if(Object.entries(file[i])[0][0] == "return"){
+
+
+        const data = Object.entries(file[i])[0][1] as any[];
+        if(data?.[0]?.["#text"]){
+          if(devMode)
+          console.log("Typ jest sztywnie narzucony: "+data?.[0]?.["#text"]+"\n")
+          return data?.[0]?.["#text"]
+          
+        }else if(data?.[0]?.["cdata"]){
+          if(devMode)
+          console.log("Typ jest określany przez kod");
+          const code = data?.[0]?.["cdata"]?.[0]?.["#text"].trim();
+          //const returnType = new Function(code)(); // działa jak eval, ale obsługuje "return"
+          try {
+            const returnType = new Function("customData", "inputReturn", code)(customData, inputReturn);
+            return returnType;
+          } catch (e) {
+            if(devMode)
+            console.error("Błąd podczas evala typu:", e);
+          }
+        }
+
+      }
+    }
+
+  }
 }

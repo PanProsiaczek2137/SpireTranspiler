@@ -1,4 +1,5 @@
 import AdmZip from "adm-zip";
+import { devMode } from "../index";
 
 
 export function readFileFromZip(
@@ -12,6 +13,7 @@ export function readFileFromZip(
   const targetFile = zipEntries.find((entry) => entry.entryName === fileName);
 
   if (!targetFile) {
+    if(devMode)
     console.log(`Plik ${fileName} nie został znaleziony w archiwum.`);
     return null;
   }
