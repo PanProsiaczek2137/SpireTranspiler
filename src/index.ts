@@ -4,11 +4,16 @@
 // * ogarnąć console.log()
 // * Jeśli niema inputu a jest require to zwraca błąd. Lub jak nie jest require i go nie ma to ustawia na wartość domyślną.
 // * Obsługa bloków w bloku czyli np że ma wypisać na konsoli coś co zwraca X blok, a nie text / REMONT!
-// ? dodanie obsługi wielu typów w inpucie i ustalenie wreście raz na zwarsze jakie typy będzie miał spireTranspiler!
-// ! dodać funkcję specjalną która sprawdza czy w inpucie jest blok 
-// ! Wykrywa czy język to ten który jest wybrany i czy każdy modół wspiera wybrany język. No i przy tłumaczeniu tłumaczy na ten wybrany.
+// ~ dodanie obsługi wielu typów w inpucie i ustalenie wreście raz na zwarsze jakie typy będzie miał spireTranspiler!
+// * dodać funkcję specjalną która sprawdza czy w inpucie jest blok 
+// * Wykrywa czy język to ten który jest wybrany i czy każdy modół wspiera wybrany język. No i przy tłumaczeniu tłumaczy na ten wybrany.
+// ! naprawić błąd, najlepiej go pokazać w przykładzie: kiedy w środku convert_int_to_str masz if i w if masz jakieś równanie. To convert_int_to_str chce liczbe, ale teraz się pyta if który nic nie zwraca. A powinno się pytać tego bloku w if (czyli operacji) która żeczywiście zwraca liczbę
+// ! przeprować więcej testów na aktualnych blokach szukając błędów. Tworzą np: kalkulator czy zgadywanie liczby
+// ? dodanie bloków typu: if, pętla, itp. czyli jeden (bądź więcej) input będzie typ block
+// ! więcej wartości do inputów. Np, że jest niezbędna wartość bezpośrenia. Czyli nie może być z zmiennej bądź z innego bloku zwracającego (return block)
 // ! dodać więcej modółów
 // ! zrobić że jak wygeneruje już kod to tworzy plik i sam go kompiluje na wykonywalny
+// ! jak jest "" w string to zamienia na ''
 
 
 import { askForFileLocation } from "./ts/userComunication";
@@ -113,13 +118,13 @@ for(let i = 0; i < Object.entries(parsedCode[whichScript].on_start).length; i++)
   const parsedBlockContent = parser.parse(blockContent || "{}");
 
   const inputList = inputsFromDeclaration(parsedBlockContent);
-  input = inputsFromUser(Object.entries(parsedCode[whichScript].on_start)[i][1], true, inputList);
+  input = inputsFromUser(Object.entries(parsedCode[whichScript].on_start)[i][1], parsedBlockContent, inputList);
 
   
   type CodeEntry = { cdata: Array<{ '#text': string }> };
   for (let j = 0; j < parsedBlockContent.length; j++) {
     const entry = Object.entries(parsedBlockContent?.[j])?.[0];
-  
+
     if (String(entry?.[0]) === 'code') {
       const raw = entry?.[1] as CodeEntry[];
   
@@ -191,11 +196,19 @@ function inputsFromDeclaration(parsedBlockContent: Array<ParsedCode>){
 
 
 // this piece of code deals with: Inputs to a block declared and provided by the user
-function inputsFromUser(rawEntry: any, fromMain: boolean, inputList: any){
+function inputsFromUser(rawEntry: any, blockData: Array<ParsedCode>, inputList: any){
   let localInputs:any = {};
 
-  if(fromMain)
-  rawInput = rawEntry;
+  let czyJestReturn = false;
+  for(let i = 0; i < blockData.length; i++){
+    if(blockData[i]["return"] !== undefined){
+      czyJestReturn = true;
+    }
+  }
+  if(!czyJestReturn){
+    console.log("Zmianiamy rawEntry! na: "+JSON.stringify(rawEntry));
+    rawInput = rawEntry;
+  }
 
   const inputRawValues = Array.isArray(rawEntry) ? rawEntry[0] : rawEntry;
 
@@ -218,10 +231,9 @@ function inputsFromUser(rawEntry: any, fromMain: boolean, inputList: any){
     //powtarzamy tyle razy ile jest inputów w tym specyficznym przetwarzanym bloku
     for (let j = 0; j < allAttributesInThisBlock.length; j++) {
       
-      //szukamy czy w tym specyficznym bloku jest x input
+      //szukamy czy w tym specyficznym bloku jest i input
       if(Object.entries(allAttributesInThisBlock[j])?.[0]?.[0] == inputList[i].name){
-        if(devMode)
-        console.log("Wykryto wartość: "+inputList[i].name);
+        if(devMode){  if(inputList[i].type == "block"){  console.log("Wykryto wartość: "+inputList[i].name+" Która oczekuje bloku")  }else{   console.log("Wykryto wartość: "+inputList[i].name)   };  }
         doWeHaveThisInput = true
 
         const name = inputList[i].name;
@@ -230,30 +242,74 @@ function inputsFromUser(rawEntry: any, fromMain: boolean, inputList: any){
         if(value["#text"] !== undefined){
           if(devMode) console.log(`Która wynosi: ${value?.["#text"]}\n`);
 
-          if(inputList[i].type == typeof value?.["#text"] || inputList[i].type === "any"){
+          if(inputList[i].type == /*typeof*/ getTypeOf(value?.["#text"]) || inputList[i].type === "any"){
             localInputs[name] = value?.["#text"]
           }else{
-            console.error(`Zły typ danych podany dla inputu ${inputList[i].name}. Oczekuje ${inputList[i].type}, za to otrzymał ${typeof value?.["#text"]}`);
-            process.exit(1)
+            console.error(`Zły typ danych podany dla inputu ${name}. Oczekuje ${inputList[i].type}, za to otrzymał ${/*typeof*/ getTypeOf(value?.["#text"])}`);
+            // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!process.exit(1)
           }
-        }else{
+        }
+        if(value["#text"] === undefined && inputList[i].type === "block"){
+          // TODO: to trza zrobić, że jak jest input blok to aby dodawało dalszy kod  :>
+          console.log("DZIAŁA!!!!!!!!") /// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+          const rawValue = allAttributesInThisBlock[j][name];
+          console.log(rawValue);
+          const returnBlockData = returnBlockDetected(rawValue?.[0]);
+          console.log("OKEJ!")
+          console.log(returnBlockData);
+          localInputs[name] = returnBlockData;
+        }
+        if(value["#text"] === undefined && inputList[i].type !== "block"){
           if(devMode) console.log('W której jest blok, przesyłamy do analizy');
 
           const rawValue = allAttributesInThisBlock[j][name];
           const returnBlockData = returnBlockDetected(rawValue?.[0]);
+          let theDataTypeThatIsInInput = "";
 
-          if(inputList[i].type == typeof returnBlockData || inputList[i].type === "any"){
+          // Szukamy typu danych który znajduje się w bloku i przypizujemy go do zmiennej "theDataTypeThatIsInInput" 
+          const fileOfBlockInsideInputTEXT = readFileFromZip(filePath, blockPathMap[Object.entries(rawValue?.[0])[0][0]]);
+          if(fileOfBlockInsideInputTEXT){
+            const fileOfBlockInsideInput = parser.parse(fileOfBlockInsideInputTEXT)
+            for(let k = 0; k < fileOfBlockInsideInput.length; k++){
+              if(Object.entries(fileOfBlockInsideInput[k])[0][0] == "return"){
+                const inReturn = fileOfBlockInsideInput[k]["return"][0]
+                if(inReturn["#text"]){
+                  theDataTypeThatIsInInput = inReturn["#text"];
+                }
+                if(inReturn["cdata"]){
+
+                  try {
+                    const returnType = new Function("customData", "inputReturn", "lang", inReturn["cdata"][0]["#text"])(customData, inputReturn, lang);
+                    theDataTypeThatIsInInput = returnType
+                  } catch (e) {
+                    if(devMode)
+                    console.error("Błąd podczas evala typu:", e);
+                  }
+
+                }
+              }
+            }
+          }
+
+          if(inputList[i].type == theDataTypeThatIsInInput || inputList[i].type === "any"){
             localInputs[name] = returnBlockData
           }else{
-            console.error(`Zły typ danych podany dla inputu ${inputList[i].name}. Oczekuje ${inputList[i].type}, za to otrzymał ${typeof returnBlockData}`);
-            process.exit(1)
+            console.error(`Zły typ danych podany dla inputu ${inputList[i].name}. Oczekuje ${inputList[i].type}, za to otrzymał ${theDataTypeThatIsInInput}`);
+            console.log(customData)
+            // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!process.exit(1)
           }
-  
+          
         }
-
+        
       }
 
     }
+
+
+
+
+
+
 
     //Debuging
     if(doWeHaveThisInput == false){
@@ -298,7 +354,7 @@ function returnBlockDetected(data: object) {
   if(devMode) console.log(`Analizujemy blok: ${blockName}\n`);
   
   const inputList = inputsFromDeclaration(parsedBlockContent);
-  let input = inputsFromUser(Array.isArray(data) ? data[0] : data, false, inputList);
+  let input = inputsFromUser(Array.isArray(data) ? data[0] : data, parsedBlockContent, inputList);
   inputReturn = input;
 
   // Pętla J i if szukają bloku code w .xml wybranego bloku
@@ -310,10 +366,10 @@ function returnBlockDetected(data: object) {
 
       const cdataText = raw?.[0]?.cdata?.[0]?.['#text'];
       if (cdataText) {
-        const fn = new Function("input", "addAtBlockLocation", cdataText);
+        const fn = new Function("input", "addAtBlockLocation", "lang", "rawInput", "isThereBlockInTheInput", "dataTypeOfInput", "GET", "addOnTopOfTheFile", "isThereSpecificBlockInTheInput", cdataText);
         let localCode = '';
         const localAdder = (s: string) => localCode += s;
-        fn(input, localAdder);
+        fn(input, localAdder, lang, rawInput, isThereBlockInTheInput, dataTypeOfInput, GET, addOnTopOfTheFile, isThereSpecificBlockInTheInput);
         return localCode;
       }
     
@@ -334,6 +390,25 @@ function isTypeMatch(expected: string, value: any): boolean {
 }
 
 
+
+function getTypeOf(data: any){
+  if(lang == "rust"){
+
+    if(typeof data == "string"){
+      return "string"
+    }else if(typeof data == "boolean"){
+      return "bool"
+    } else if (typeof data === "number") {
+      if (Number.isInteger(data)) {
+        return "int";
+      } else {
+        return "float";
+      }
+    }else if(data == Array || data == Object){
+      return "block";
+    }
+  }
+}
 
 
 
@@ -406,7 +481,7 @@ function dataTypeOfInput(input: string){
           const code = data?.[0]?.["cdata"]?.[0]?.["#text"].trim();
           //const returnType = new Function(code)(); // działa jak eval, ale obsługuje "return"
           try {
-            const returnType = new Function("customData", "inputReturn", code)(customData, inputReturn);
+            const returnType = new Function("customData", "inputReturn", "lang", code)(customData, inputReturn, lang);
             return returnType;
           } catch (e) {
             if(devMode)
@@ -417,5 +492,19 @@ function dataTypeOfInput(input: string){
       }
     }
 
+  }
+}
+
+function isThereBlockInTheInput(input: string){
+  return (GET([input, "#text"]) === undefined)
+}
+
+function isThereSpecificBlockInTheInput(input: string, nameOfBlock: string){
+  //return (GET([input, "#text"]) === undefined)
+  if(GET([input, "#text"]) === undefined){
+    //Wiemy że jest block i sprawdzamy czy to ten
+    return (Object.entries(GET([input])[0])[0][0] === nameOfBlock);
+  }else{
+    return false
   }
 }
