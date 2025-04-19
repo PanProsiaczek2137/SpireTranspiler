@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
+    "run": "dist\\spireTranspiler.exe",
     "dev": "npm run build-win && dist\\spireTranspiler.exe",
     "build-win": "npx tsc && npx nexe dist/index.js -t windows-x64-14.15.3 -o dist/spireTranspiler.exe",
     "build-linux": "npx tsc && npx nexe dist/index.js -t linux-x64-14.15.3 -o dist/spireTranspiler",

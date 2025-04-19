@@ -7,17 +7,17 @@
 // ~ dodanie obsługi wielu typów w inpucie i ustalenie wreście raz na zwarsze jakie typy będzie miał spireTranspiler!
 // * dodać funkcję specjalną która sprawdza czy w inpucie jest blok 
 // * Wykrywa czy język to ten który jest wybrany i czy każdy modół wspiera wybrany język. No i przy tłumaczeniu tłumaczy na ten wybrany.
-// ! naprawić błąd, najlepiej go pokazać w przykładzie: kiedy w środku convert_int_to_str masz if i w if masz jakieś równanie. To convert_int_to_str chce liczbe, ale teraz się pyta if który nic nie zwraca. A powinno się pytać tego bloku w if (czyli operacji) która żeczywiście zwraca liczbę
+// * dodanie bloków typu: if, pętla, itp. czyli jeden (bądź więcej) input będzie typ block
 // ! przeprować więcej testów na aktualnych blokach szukając błędów. Tworzą np: kalkulator czy zgadywanie liczby
-// ? dodanie bloków typu: if, pętla, itp. czyli jeden (bądź więcej) input będzie typ block
 // ! więcej wartości do inputów. Np, że jest niezbędna wartość bezpośrenia. Czyli nie może być z zmiennej bądź z innego bloku zwracającego (return block)
 // ! dodać więcej modółów
-// ! zrobić że jak wygeneruje już kod to tworzy plik i sam go kompiluje na wykonywalny
+// ? zrobić że jak wygeneruje już kod to tworzy plik i sam go kompiluje na wykonywalny
 // ! jak jest "" w string to zamienia na ''
 
 
 import { askForFileLocation } from "./ts/userComunication";
 import { readFileFromZip, listModulesAndBlocks } from "./ts/zipOperation";
+import { createProject } from './projectGenerator';
 
 import { XMLParser } from "fast-xml-parser";
 
@@ -41,14 +41,14 @@ let whichScript = 0;
 let lang = "rust";
 export let devMode = true;
 
-let code = '';
+export let code = '';
 let input: InputMap = {};
 let inputReturn: InputMap = {}
 let rawInput: InputMap = {};
 let customData: any = {};
 
 console.clear();
-const filePath = askForFileLocation();
+export const filePath = askForFileLocation();
 const config = JSON.parse(readFileFromZip(filePath, "config.json") || "{}");
 if (config == "{}") {
   console.error("Nie znaleziono pliku konfiguracyjnego.");
@@ -146,6 +146,7 @@ console.log(`WYGENEROWANY KOD JĘZYKA ${(lang).toUpperCase()}:`)
 console.log("\n");
 console.log(code);
 console.log("\n");
+createProject()
 
 
 // @  C:\Users\Mateusz\Desktop\test.srl
@@ -246,12 +247,11 @@ function inputsFromUser(rawEntry: any, blockData: Array<ParsedCode>, inputList: 
             localInputs[name] = value?.["#text"]
           }else{
             console.error(`Zły typ danych podany dla inputu ${name}. Oczekuje ${inputList[i].type}, za to otrzymał ${/*typeof*/ getTypeOf(value?.["#text"])}`);
-            // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!process.exit(1)
+            process.exit(1)
           }
         }
         if(value["#text"] === undefined && inputList[i].type === "block"){
-          // TODO: to trza zrobić, że jak jest input blok to aby dodawało dalszy kod  :>
-          console.log("DZIAŁA!!!!!!!!") /// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+          console.log("DZIAŁA!!!!!!!!") 
           const rawValue = allAttributesInThisBlock[j][name];
           console.log(rawValue);
           const returnBlockData = returnBlockDetected(rawValue?.[0]);
@@ -296,7 +296,7 @@ function inputsFromUser(rawEntry: any, blockData: Array<ParsedCode>, inputList: 
           }else{
             console.error(`Zły typ danych podany dla inputu ${inputList[i].name}. Oczekuje ${inputList[i].type}, za to otrzymał ${theDataTypeThatIsInInput}`);
             console.log(customData)
-            // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!process.exit(1)
+            process.exit(1)
           }
           
         }

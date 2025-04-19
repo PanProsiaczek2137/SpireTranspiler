@@ -1,16 +1,16 @@
-import AdmZip from "adm-zip";
+//import AdmZip from "adm-zip"; // ! Nie do końca działa  :<
 import { devMode } from "../index";
+import * as fs from "fs";
+import * as path from "path";
+const AdmZip = require("adm-zip");
 
 
-export function readFileFromZip(
-  filePath: string,
-  fileName: string
-): string | null {
+export function readFileFromZip(filePath: string, fileName: string): string | null {
   const zip = new AdmZip(filePath);
   const zipEntries = zip.getEntries(); // Pobieranie wszystkich plików w archiwum
 
   // Szukamy pliku o konkretnej nazwie
-  const targetFile = zipEntries.find((entry) => entry.entryName === fileName);
+  const targetFile = zipEntries.find((entry:any) => entry.entryName === fileName);
 
   if (!targetFile) {
     if(devMode)
