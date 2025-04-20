@@ -4,15 +4,18 @@
 // * ogarnąć console.log()
 // * Jeśli niema inputu a jest require to zwraca błąd. Lub jak nie jest require i go nie ma to ustawia na wartość domyślną.
 // * Obsługa bloków w bloku czyli np że ma wypisać na konsoli coś co zwraca X blok, a nie text / REMONT!
-// ~ dodanie obsługi wielu typów w inpucie i ustalenie wreście raz na zwarsze jakie typy będzie miał spireTranspiler!
+// ! dodanie obsługi wielu typów w inpucie i ustalenie wreście raz na zwarsze jakie typy będzie miał spireTranspiler!
 // * dodać funkcję specjalną która sprawdza czy w inpucie jest blok 
 // * Wykrywa czy język to ten który jest wybrany i czy każdy modół wspiera wybrany język. No i przy tłumaczeniu tłumaczy na ten wybrany.
 // * dodanie bloków typu: if, pętla, itp. czyli jeden (bądź więcej) input będzie typ block
 // ! przeprować więcej testów na aktualnych blokach szukając błędów. Tworzą np: kalkulator czy zgadywanie liczby
 // ! więcej wartości do inputów. Np, że jest niezbędna wartość bezpośrenia. Czyli nie może być z zmiennej bądź z innego bloku zwracającego (return block)
 // ! dodać więcej modółów
-// ? zrobić że jak wygeneruje już kod to tworzy plik i sam go kompiluje na wykonywalny
+// * zrobić że jak wygeneruje już kod to tworzy plik i sam go kompiluje na wykonywalny
 // ! jak jest "" w string to zamienia na ''
+// ! przyśpieszyć program aby za każdym blokiem nie czytał zipa tylko raz zczytał i se go zapisał w pamięci cash (zmiennej)
+
+// TODO: zrobić aby targetPlatforms i targetLanguages z config.json naprawdę coś robiło
 
 
 import { askForFileLocation } from "./ts/userComunication";
@@ -26,15 +29,21 @@ import { XMLParser } from "fast-xml-parser";
 type ParsedCode = Record<string, {
   on_start: Record<string, Array<Record<string, Array<{ '#text': string }>>>>;
 }>;
-type InputListItem = {
+type InputListItem = { // TODO: wprowadzić te inputy: valueList, max, min, regex
   name: string;
   type: string;
   required: string;
   default: string;
+  canYouPutBlockIn: string;
+  valueList: string;
+  placeholder: string;
+  max: string;
+  min: string;
+  regex: string;
+  blockDoc: string;
 };
 type InputMap = Record<string, string | unknown>;
 type RawAttributeValue = { [key: string]: Array<{ '#text'?: string }> };
-
 
 
 let whichScript = 0;
@@ -46,12 +55,14 @@ let input: InputMap = {};
 let inputReturn: InputMap = {}
 let rawInput: InputMap = {};
 let customData: any = {};
+export let moduleFiles: any = {}
+export const filePath = askForFileLocation();
+export const configFile:any = readFileFromZip(filePath, "config.json")
 
 console.clear();
-export const filePath = askForFileLocation();
 const config = JSON.parse(readFileFromZip(filePath, "config.json") || "{}");
 if (config == "{}") {
-  console.error("Nie znaleziono pliku konfiguracyjnego.");
+  console.error("Błąd: Nie znaleziono pliku konfiguracyjnego.");
   process.exit(1);
 }
 
@@ -66,8 +77,10 @@ for (const [moduleName, blocks] of Object.entries(allModules)) {
 
 // Runs pre-code from modules
 if(devMode)console.log("<-------------------- ( ŁADOWANIE KODU Z MODUŁÓW ) -------------------->");
+let loadedModuleName = ""; 
 for(let i = 0; i < Object.entries(allModules).length; i++){
   const moduleName = Object.entries(allModules)[i][0];
+  loadedModuleName = moduleName;
   const moduleConfigTEXT = readFileFromZip(filePath, `modules/${moduleName}/config.json`);
   if (moduleConfigTEXT) {
     const moduleConfig = JSON.parse(moduleConfigTEXT);
@@ -144,9 +157,12 @@ for(let i = 0; i < Object.entries(parsedCode[whichScript].on_start).length; i++)
 console.log("\n");
 console.log(`WYGENEROWANY KOD JĘZYKA ${(lang).toUpperCase()}:`)
 console.log("\n");
-console.log(code);
+console.log(code+"\n");
+console.log(Object.entries(moduleFiles));
 console.log("\n");
+
 createProject()
+
 
 
 // @  C:\Users\Mateusz\Desktop\test.srl
@@ -240,17 +256,32 @@ function inputsFromUser(rawEntry: any, blockData: Array<ParsedCode>, inputList: 
         const name = inputList[i].name;
         const value = Object.entries(allAttributesInThisBlock[j])?.[0]?.[1]?.[0];
 
+        //Debuging
+        if(inputList[i].canYouPutBlockIn == "false" && value["#text"] === undefined){
+
+        }
+
+        // Kiedy mamy w inpucie od razu wartość
         if(value["#text"] !== undefined){
           if(devMode) console.log(`Która wynosi: ${value?.["#text"]}\n`);
 
           if(inputList[i].type == /*typeof*/ getTypeOf(value?.["#text"]) || inputList[i].type === "any"){
             localInputs[name] = value?.["#text"]
           }else{
-            console.error(`Zły typ danych podany dla inputu ${name}. Oczekuje ${inputList[i].type}, za to otrzymał ${/*typeof*/ getTypeOf(value?.["#text"])}`);
+            console.error(`Błąd: Zły typ danych podany dla inputu ${name}. Oczekuje ${inputList[i].type}, za to otrzymał ${/*typeof*/ getTypeOf(value?.["#text"])}`);
             process.exit(1)
           }
         }
+
+        // Kiedy jest input typu block
         if(value["#text"] === undefined && inputList[i].type === "block"){
+
+          //Debuging
+          if(inputList[i].canYouPutBlockIn == "false"){
+            console.error("Błąd: wartość canYouPutBlockIn została ustawiona na false, pomimo iż type inputu to block. Co niema sensu  :<");
+            process.exit(1);
+          }
+
           console.log("DZIAŁA!!!!!!!!") 
           const rawValue = allAttributesInThisBlock[j][name];
           console.log(rawValue);
@@ -258,8 +289,18 @@ function inputsFromUser(rawEntry: any, blockData: Array<ParsedCode>, inputList: 
           console.log("OKEJ!")
           console.log(returnBlockData);
           localInputs[name] = returnBlockData;
+
         }
+
+        // Kiedy mamy block w inpucie, ale input wymaga wartości
         if(value["#text"] === undefined && inputList[i].type !== "block"){
+
+          //Debuging
+          if(inputList[i].canYouPutBlockIn == "false"){
+            console.error("Błąd: wartość canYouPutBlockIn została ustawiona na false, pomimo to w inpucie znajduje się blok");
+            process.exit(1);
+          }
+
           if(devMode) console.log('W której jest blok, przesyłamy do analizy');
 
           const rawValue = allAttributesInThisBlock[j][name];
@@ -283,7 +324,7 @@ function inputsFromUser(rawEntry: any, blockData: Array<ParsedCode>, inputList: 
                     theDataTypeThatIsInInput = returnType
                   } catch (e) {
                     if(devMode)
-                    console.error("Błąd podczas evala typu:", e);
+                    console.error("Błąd: podczas evala typu:", e);
                   }
 
                 }
@@ -294,7 +335,7 @@ function inputsFromUser(rawEntry: any, blockData: Array<ParsedCode>, inputList: 
           if(inputList[i].type == theDataTypeThatIsInInput || inputList[i].type === "any"){
             localInputs[name] = returnBlockData
           }else{
-            console.error(`Zły typ danych podany dla inputu ${inputList[i].name}. Oczekuje ${inputList[i].type}, za to otrzymał ${theDataTypeThatIsInInput}`);
+            console.error(`Błąd: Zły typ danych podany dla inputu ${inputList[i].name}. Oczekuje ${inputList[i].type}, za to otrzymał ${theDataTypeThatIsInInput}`);
             console.log(customData)
             process.exit(1)
           }
@@ -314,7 +355,7 @@ function inputsFromUser(rawEntry: any, blockData: Array<ParsedCode>, inputList: 
     //Debuging
     if(doWeHaveThisInput == false){
       if(inputList[i].required == true){
-        console.error(`Nie znaleziono w bloku ${Object.entries(rawEntry)[0][0]} inputu "${inputList[i].name}" który był wymagany!`);
+        console.error(`Błąd: Nie znaleziono w bloku ${Object.entries(rawEntry)[0][0]} inputu "${inputList[i].name}" który był wymagany!`);
         process.exit(1);
       }
       if(inputList[i].required == false){
@@ -328,11 +369,11 @@ function inputsFromUser(rawEntry: any, blockData: Array<ParsedCode>, inputList: 
           } else if (inputList[i].type.includes("boolean")) {
             localInputs[inputList[i].name] = false;
           } else {
-            console.error(`Nieobsługiwany typ "${inputList[i].type}" dla inputu "${inputList[i].name}" w bloku ${Object.entries(rawEntry)[0][0]}.`);
+            console.error(`Błąd: Nieobsługiwany typ "${inputList[i].type}" dla inputu "${inputList[i].name}" w bloku ${Object.entries(rawEntry)[0][0]}.`);
             process.exit(1);
           }
           if(devMode) 
-          console.error(`Input "${inputList[i].name}" w bloku ${Object.entries(rawEntry)[0][0]} nie został znaleziony, przypisano wartość domyślną dla typu "${inputList[i].type}".`);
+          console.error(`Błąd: Input "${inputList[i].name}" w bloku ${Object.entries(rawEntry)[0][0]} nie został znaleziony, przypisano wartość domyślną dla typu "${inputList[i].type}".`);
         }
       }
     }
@@ -485,7 +526,7 @@ function dataTypeOfInput(input: string){
             return returnType;
           } catch (e) {
             if(devMode)
-            console.error("Błąd podczas evala typu:", e);
+            console.error("Błąd: podczas evala typu:", e);
           }
         }
 
@@ -507,4 +548,12 @@ function isThereSpecificBlockInTheInput(input: string, nameOfBlock: string){
   }else{
     return false
   }
+}
+
+function addToModuleFile(data: string){
+  console.log("dodano do modułu: "+loadedModuleName);
+  if(moduleFiles[loadedModuleName] == undefined){
+    moduleFiles[loadedModuleName] = "";
+  }
+  moduleFiles[loadedModuleName] += data
 }
