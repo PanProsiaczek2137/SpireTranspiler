@@ -1,6 +1,8 @@
 import * as readlineSync from "readline-sync";
 import * as fs from "fs";
 
+export let langGlobal = 'rust';
+
 export function askForFileLocation(): string {
   const filePath = readlineSync.question("Podaj pelna sciezke do pliku .srl: ");
 

@@ -15,8 +15,6 @@
 // ! jak jest "" w string to zamienia na ''
 // ! przyśpieszyć program aby za każdym blokiem nie czytał zipa tylko raz zczytał i se go zapisał w pamięci cash (zmiennej)
 
-// TODO: zrobić aby targetPlatforms i targetLanguages z config.json naprawdę coś robiło
-
 
 import { askForFileLocation } from "./ts/userComunication";
 import { readFileFromZip, listModulesAndBlocks } from "./ts/zipOperation";
@@ -29,24 +27,25 @@ import { XMLParser } from "fast-xml-parser";
 type ParsedCode = Record<string, {
   on_start: Record<string, Array<Record<string, Array<{ '#text': string }>>>>;
 }>;
-type InputListItem = { // TODO: wprowadzić te inputy: valueList, max, min, regex
+type InputListItem = {
   name: string;
   type: string;
   required: string;
   default: string;
   canYouPutBlockIn: string;
-  valueList: string;
-  placeholder: string;
+  valueList: string; // Do użycia w spireLite Studio/IDE
+  placeholder: string; // Do użycia w spireLite Studio/IDE
   max: string;
   min: string;
   regex: string;
-  blockDoc: string;
+  blockDoc: string; // Do użycia w spireLite Studio/IDE
 };
 type InputMap = Record<string, string | unknown>;
 type RawAttributeValue = { [key: string]: Array<{ '#text'?: string }> };
 
 
 let whichScript = 0;
+export let platform = "windows";
 let lang = "rust";
 export let devMode = true;
 
@@ -83,11 +82,34 @@ for(let i = 0; i < Object.entries(allModules).length; i++){
   loadedModuleName = moduleName;
   const moduleConfigTEXT = readFileFromZip(filePath, `modules/${moduleName}/config.json`);
   if (moduleConfigTEXT) {
+
     const moduleConfig = JSON.parse(moduleConfigTEXT);
       if(devMode)
       console.log(`Ładujemy kod z modułu: ${moduleName}`);
     if(moduleConfig.runCode == undefined){
       continue;
+    }
+
+    let containsLanguage = false;
+    for(let j = 0; j < (moduleConfig.targetLanguages).length; j++){
+      if(moduleConfig.targetLanguages[j] == lang){
+        containsLanguage = true;
+      }
+    }
+    if(!containsLanguage){
+      console.error(`Błąd: moduł ${moduleName} nie wspiera języka: ${lang}.`);
+      process.exit(1);
+    }
+
+    let containsPlatform = false;
+    for(let j = 0; j < (moduleConfig.platforms).length; j++){
+      if(moduleConfig.platforms[j] == platform){
+        containsPlatform = true;
+      }
+    }
+    if(!containsPlatform){
+      console.error(`Błąd: moduł ${moduleName} nie wspiera platformy: ${platform}.`);
+      process.exit(1);
     }
     
     for(let j = 0; j < (moduleConfig.runCode[lang]).length; j++){
@@ -258,15 +280,42 @@ function inputsFromUser(rawEntry: any, blockData: Array<ParsedCode>, inputList: 
 
         //Debuging
         if(inputList[i].canYouPutBlockIn == "false" && value["#text"] === undefined){
-
+          console.error(`Błąd: znajduje się block w inpucie który nie obsługuje bloków`);
+          process.exit(1);
         }
 
         // Kiedy mamy w inpucie od razu wartość
         if(value["#text"] !== undefined){
           if(devMode) console.log(`Która wynosi: ${value?.["#text"]}\n`);
 
-          if(inputList[i].type == /*typeof*/ getTypeOf(value?.["#text"]) || inputList[i].type === "any"){
+          if(inputList[i].type == getTypeOf(value?.["#text"]) || inputList[i].type === "any"){
+
+            if (inputList[i].type === "number" /* Później int, float, uint */ && inputList[i].min !== undefined) {
+              const num = Number(value?.["#text"]);
+              if (!(!isNaN(num) && num >= inputList[i].min)) {
+                console.error(`input przekroczył wartość minimalną czyli ${inputList[i].min}. Dostano wartość ${value?.["#text"]}`);
+                process.exit(1);
+              }
+            }
+
+            if (inputList[i].type === "number" /* Później int, float, uint */ && inputList[i].max !== undefined) {
+              const num = Number(value?.["#text"]);
+              if (!(!isNaN(num) && num <= inputList[i].max)) {
+                console.error(`input przekroczył wartość maksymalną czyli ${inputList[i].max}. Dostano wartość ${value?.["#text"]}`);
+                process.exit(1);
+              }
+            }
+
+            if (inputList[i].type === "string" && inputList[i].regex !== undefined) {
+              const regex = new RegExp(inputList[i].regex);
+              if (!regex.test(value?.["#text"])) {
+                console.error(`Wartość inputu ${name} nie pasuje do wzorca regex: ${inputList[i].regex}. Otrzymano: ${value?.["#text"]}`);
+                process.exit(1);
+              }
+            }
+
             localInputs[name] = value?.["#text"]
+
           }else{
             console.error(`Błąd: Zły typ danych podany dla inputu ${name}. Oczekuje ${inputList[i].type}, za to otrzymał ${/*typeof*/ getTypeOf(value?.["#text"])}`);
             process.exit(1)
@@ -276,6 +325,12 @@ function inputsFromUser(rawEntry: any, blockData: Array<ParsedCode>, inputList: 
         // Kiedy jest input typu block
         if(value["#text"] === undefined && inputList[i].type === "block"){
 
+          if(inputList[i].min !== undefined || inputList[i].max !== undefined){
+            // TODO: można zrobić że min i max oznaczają min i max ilość bloków w input
+            console.error(`input ma ustawiony parametr max bądź min pomimo iż jest typu block`);
+            process.exit(1);
+          }
+          
           //Debuging
           if(inputList[i].canYouPutBlockIn == "false"){
             console.error("Błąd: wartość canYouPutBlockIn została ustawiona na false, pomimo iż type inputu to block. Co niema sensu  :<");
@@ -294,6 +349,8 @@ function inputsFromUser(rawEntry: any, blockData: Array<ParsedCode>, inputList: 
 
         // Kiedy mamy block w inpucie, ale input wymaga wartości
         if(value["#text"] === undefined && inputList[i].type !== "block"){
+
+          // TODO: wymyśleć co tutaj zrobić kiedy ustawiono wartość max/min (albo i regex)
 
           //Debuging
           if(inputList[i].canYouPutBlockIn == "false"){
