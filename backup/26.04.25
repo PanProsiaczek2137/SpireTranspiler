@@ -50,8 +50,9 @@ type RawAttributeValue = { [key: string]: Array<{ '#text'?: string }> };
 let whichScript = 0;
 export let platform = "windows";
 let lang = "rust";
-export let devMode = false;
+export let devMode = true;
 
+//const spireTranspilerTypes = ["string", "boolean", "number", "any", "block"];
 const langTypes = {"rust": ["string", "bool", "float", "int", "uint", "any", "block"]}
 export let code = '';
 let input: InputMap = {};
@@ -186,6 +187,7 @@ console.log("\n");
 console.log(code+"\n");
 console.log(Object.entries(moduleFiles));
 console.log("\n");
+console.log(JSON.stringify(parsedCode));
 
 //createProject()
 
@@ -201,6 +203,7 @@ console.log("\n");
 function inputsFromDeclaration(parsedBlockContent: Array<ParsedCode>){
   let inputList: InputListItem[] = [];
 
+
   const inputsRaw = (()=>{
     for (const node of parsedBlockContent) {
       if (node["inputs"]) return node["inputs"];
@@ -215,6 +218,7 @@ function inputsFromDeclaration(parsedBlockContent: Array<ParsedCode>){
   //  ]
   // 
   if (Array.isArray(inputsRaw)) {
+
     for (const inputNode of inputsRaw) {
       const attrs = inputNode[":@"];
       if (attrs) {
@@ -223,9 +227,23 @@ function inputsFromDeclaration(parsedBlockContent: Array<ParsedCode>){
           const cleanedKey = key.replace(/^@_/, "");
           cleaned[cleanedKey] = attrs[key];
         }
+        if(!(langTypes[lang as keyof typeof langTypes]).includes(cleaned["type"])){
+          if(JSON.parse(cleaned["type"]) == Array){
+
+            for(let j = 0; j < JSON.parse(cleaned["type"]).length; j++){
+              if(!(langTypes[lang as keyof typeof langTypes]).includes(JSON.parse(cleaned["type"])[j])){
+                console.error(`Błąd: typ danych ${cleaned["type"]} nie występuje w ${lang}. Oto lista typów: ${JSON.stringify(langTypes)}`);
+                process.exit(1);
+              }
+            }
+
+          }
+        }
         inputList.push(cleaned as InputListItem);
+
       }
     }
+
   }
 
   if(devMode){
@@ -242,7 +260,7 @@ function inputsFromDeclaration(parsedBlockContent: Array<ParsedCode>){
 function inputsFromUser(rawEntry: any, blockData: Array<ParsedCode>, inputList: any){
   let localInputs:any = {};
   // !!! NA TO TRZEBA UWAŻAĆ !!!
-  /*
+  /* 
   let czyJestReturn = false;
   for(let i = 0; i < blockData.length; i++){
     if(blockData[i]["return"] !== undefined){
@@ -250,15 +268,14 @@ function inputsFromUser(rawEntry: any, blockData: Array<ParsedCode>, inputList: 
     }
   }
   if(!czyJestReturn){
-    console.log("Zmianiamy rawEntry! na: "+JSON.stringify(rawEntry));
-    */
+    console.log("Zmianiamy rawEntry! na: "+JSON.stringify(rawEntry));*/
     rawInput = rawEntry;
   //}
 
   const inputRawValues = Array.isArray(rawEntry) ? rawEntry[0] : rawEntry;
 
 
-
+  
   const allAttributesInThisBlock = Object.entries(inputRawValues)[0]?.[1] as RawAttributeValue[] ?? [];
 
   if(devMode){
@@ -290,23 +307,21 @@ function inputsFromUser(rawEntry: any, blockData: Array<ParsedCode>, inputList: 
           process.exit(1);
         }
 
-
-
         // Kiedy mamy w inpucie od razu wartość
         if(value["#text"] !== undefined){
           if(devMode) console.log(`Która wynosi: ${value?.["#text"]}\n`);
 
-          if(hasCommonElement(inputList[i].type, getTypeOf(value?.["#text"]))  /*inputList[i].type == getTypeOf(value?.["#text"])*/ || inputList[i].type === "any"){
-
-            if (inputList[i].type === "number" /* Później int, float, uint */ && inputList[i].min !== undefined) {
+          if(hasCommonElement(getTypeOf(value?.["#text"]), inputList[i].type) || inputList[i].type === "any"){
+            // TODO
+            if (inputList[i].type === "number" && inputList[i].min !== undefined) {
               const num = Number(value?.["#text"]);
               if (!(!isNaN(num) && num >= inputList[i].min)) {
                 console.error(`input przekroczył wartość minimalną czyli ${inputList[i].min}. Dostano wartość ${value?.["#text"]}`);
                 process.exit(1);
               }
             }
-
-            if (inputList[i].type === "number" /* Później int, float, uint */ && inputList[i].max !== undefined) {
+            // TODO
+            if (inputList[i].type === "number"  && inputList[i].max !== undefined) {
               const num = Number(value?.["#text"]);
               if (!(!isNaN(num) && num <= inputList[i].max)) {
                 console.error(`input przekroczył wartość maksymalną czyli ${inputList[i].max}. Dostano wartość ${value?.["#text"]}`);
@@ -325,7 +340,7 @@ function inputsFromUser(rawEntry: any, blockData: Array<ParsedCode>, inputList: 
             localInputs[name] = value?.["#text"]
 
           }else{
-            console.error(`Błąd: Zły typ danych podany dla inputu ${name}. Oczekuje ${inputList[i].type}, za to otrzymał ${/*typeof*/ getTypeOf(value?.["#text"])}`);
+            console.error(`Błąd1: Zły typ danych podany dla inputu ${name}. Oczekuje ${inputList[i].type}, za to otrzymał ${ getTypeOf(value?.["#text"]) }`);
             process.exit(1)
           }
         }
@@ -370,7 +385,7 @@ function inputsFromUser(rawEntry: any, blockData: Array<ParsedCode>, inputList: 
 
           const rawValue = allAttributesInThisBlock[j][name];
           const returnBlockData = returnBlockDetected(rawValue?.[0]);
-          let theDataTypeThatIsInInput:string = "";
+          let theDataTypeThatIsInInput = "";
 
           // Szukamy typu danych który znajduje się w bloku i przypizujemy go do zmiennej "theDataTypeThatIsInInput" 
           const fileOfBlockInsideInputTEXT = readFileFromZip(filePath, blockPathMap[Object.entries(rawValue?.[0])[0][0]]);
@@ -383,11 +398,9 @@ function inputsFromUser(rawEntry: any, blockData: Array<ParsedCode>, inputList: 
                   theDataTypeThatIsInInput = inReturn["#text"];
                 }
                 if(inReturn["cdata"]){
-
                   try {
                     const returnType = new Function("customData", "inputReturn", "lang", "dataTypeOfInput", inReturn["cdata"][0]["#text"])(customData, inputReturn, lang, dataTypeOfInput);
-                    console.log("otrzymano: "+returnType);
-                    theDataTypeThatIsInInput = returnType;
+                    theDataTypeThatIsInInput = returnType
                   } catch (e) {
                     if(devMode)
                     console.error("Błąd: podczas evala typu:", e);
@@ -398,19 +411,55 @@ function inputsFromUser(rawEntry: any, blockData: Array<ParsedCode>, inputList: 
             }
           }
 
-          if(hasCommonElement(inputList[i].type, theDataTypeThatIsInInput) || inputList[i].type === "any"){
+          console.log("chyba to jest typ: "+ theDataTypeThatIsInInput);
+          if(hasCommonElement(getTypeOf(value?.["#text"]), inputList[i].type) || inputList[i].type === "any"){
             localInputs[name] = returnBlockData
           }else{
-            console.error(`Błąd: Zły typ danych podany dla inputu ${inputList[i].name}. Oczekuje ${inputList[i].type}, za to otrzymał ${theDataTypeThatIsInInput}`);
+            console.error(`Błąd2: Zły typ danych podany dla inputu ${inputList[i].name}. Oczekuje ${inputList[i].type}, za to otrzymał ${theDataTypeThatIsInInput}`);
             console.log(customData)
-            // !process.exit(1)
           }
-          
+          /*
+          const isArray = (() => {
+            try {
+              return Array.isArray(JSON.parse(inputList[i].type));
+            } catch {
+              return false;
+            }
+          })();
+
+          if(isArray){
+
+            if((JSON.parse(inputList[i].type)).includes(theDataTypeThatIsInInput)){
+              localInputs[name] = returnBlockData
+            }else{
+              console.error(`Błąd2: Zły typ danych podany dla inputu ${inputList[i].name}. Oczekuje ${inputList[i].type}, za to otrzymał ${theDataTypeThatIsInInput}`);
+              console.log(customData)
+              // !process.exit(1)
+            }
+
+          }else{
+
+            if(inputList[i].type == theDataTypeThatIsInInput || inputList[i].type === "any"){
+              localInputs[name] = returnBlockData
+            }else{
+              console.error(`Błąd3: Zły typ danych podany dla inputu ${inputList[i].name}. Oczekuje ${inputList[i].type}, za to otrzymał ${theDataTypeThatIsInInput}`);
+              console.log(customData)
+              // !process.exit(1)
+            }
+
+          }
+          */
         }
+
+
         
       }
 
     }
+
+
+
+
 
 
 
@@ -449,7 +498,6 @@ function inputsFromUser(rawEntry: any, blockData: Array<ParsedCode>, inputList: 
 
 
 function returnBlockDetected(data: object) {
-
   const blockName = Object.entries(data)?.[0]?.[0];
   const blockPath = blockPathMap[blockName];
   const blockContent = blockPath ? readFileFromZip(filePath, blockPath) : "{}";
@@ -461,57 +509,6 @@ function returnBlockDetected(data: object) {
   let input = inputsFromUser(Array.isArray(data) ? data[0] : data, parsedBlockContent, inputList);
   inputReturn = input;
 
-
-
-  function dataTypeOfInputInCode(input: string): string {
-    const pasedBlock = (data as Record<string, any>)?.[blockName];
-    for(let i = 0; i < pasedBlock.length; i++){
-      if(Object.entries(pasedBlock[i])[0][0] == input){
-        const blockName = Object.entries(pasedBlock[i][input][0])[0][0]
-        const fileTEXT = readFileFromZip(filePath, blockPathMap[blockName])
-        if(fileTEXT){
-          const file = parser.parse(fileTEXT)[0]?.[lang]
-          //Szukamy return
-          for(let j = 0; j < file.length; j++){
-            if(Object.entries(file[j])[0][0] == "return"){
-
-              const data = Object.entries(file[j])[0][1] as any[];
-
-              if(data?.[0]?.["#text"]){
-                if(devMode)console.log("Typ jest sztywnie narzucony: "+data?.[0]?.["#text"]+"\n")
-                return data?.[0]?.["#text"]
-                
-              }else if(data?.[0]?.["cdata"]){
-                if(devMode)console.log("Typ jest określany przez kod");
-                const code = data?.[0]?.["cdata"]?.[0]?.["#text"].trim();
-                //const returnType = new Function(code)(); // działa jak eval, ale obsługuje "return"
-                // !CHYBA TRZA BĘDZI UŻYĆ ZNÓW: returnBlockDetected  Aby okereślić iunputy użytkownika dla tego bloku
-                try {
-                  const returnType = new Function("customData", "inputReturn", "lang", code)(customData, inputReturn, lang);
-                  return returnType;
-                } catch (e) {
-                  if(devMode)
-                  console.error("Błąd: podczas evala typu:", e);
-                }
-
-              }
-      
-            }
-          }
-      
-        }
-
-
-
-      }
-    }
-
-    console.error("Błąd: error ze zdefiniowaniem typy");
-    process.exit(1);
-  }
-
-
-
   // Pętla J i if szukają bloku code w .xml wybranego bloku
   for (let j = 0; j < parsedBlockContent.length; j++) {
     const entry = Object.entries(parsedBlockContent?.[j])?.[0];
@@ -521,11 +518,11 @@ function returnBlockDetected(data: object) {
 
       const cdataText = raw?.[0]?.cdata?.[0]?.['#text'];
       if (cdataText) {
-        const fn = new Function("input", "addAtBlockLocation", "lang", "rawInput", "isThereBlockInTheInput", "dataTypeOfInput", "GET", "addOnTopOfTheFile", "isThereSpecificBlockInTheInput", "stripQuotes", cdataText);
+        const fn = new Function("input", "addAtBlockLocation", "lang", "rawInput", "isThereBlockInTheInput", "addOnTopOfTheFile", "isThereSpecificBlockInTheInput", "stripQuotes", cdataText);
         let localCode = '';
         const localAdder = (s: string) => localCode += s;
-        fn(input, localAdder, lang, rawInput, isThereBlockInTheInput, dataTypeOfInputInCode, GET, addOnTopOfTheFile, isThereSpecificBlockInTheInput, stripQuotes);
-        console.log("OKEJ: "+ JSON.stringify(data));
+        fn(input, localAdder, lang, rawInput, isThereBlockInTheInput, addOnTopOfTheFile, isThereSpecificBlockInTheInput, stripQuotes);
+        console.log("po analizie zwrocona wartość: "+localCode);
         return localCode;
       }
     
@@ -536,7 +533,7 @@ function returnBlockDetected(data: object) {
 }
 
 function hasCommonElement(a: string, b: string): boolean {
-  if(devMode) console.log(`Sprawdzamy czy ${a} i ${b} współnie zawierają elementy`);
+  console.log(`Sprawdzamy czy ${a} i ${b} współnie zawierają elementy`);
   function toArray(input: string): any[] {
       input = input.trim();
       if (input.startsWith("[") && input.endsWith("]")) {
@@ -558,6 +555,14 @@ function hasCommonElement(a: string, b: string): boolean {
 
   return arrayA.some(item => setB.has(item));
 }
+
+
+
+
+
+
+
+
 
 function getTypeOf(data: any): string {
   if (lang === "rust") {
@@ -588,10 +593,10 @@ function getTypeOf(data: any): string {
 
 
 
-
 function addAtBlockLocation(data: string){
   code += data;
-  if(devMode)console.log("Dodano kod: "+data);
+  if(devMode)
+  console.log("Dodano kod: "+data);
 }
 
 function addOnTopOfTheFile(data: string){
@@ -600,9 +605,10 @@ function addOnTopOfTheFile(data: string){
   console.log("Dodano kod na góre pliku: "+data);
 }
 
+// TODO: Użyć funkcji GET aby uptościć kod w funkcjach: inputsFromDeclaration, inputsFromUser i można nawet returnBlockDetected i innych.
 function GET(path: (string | number)[]): any {
   let current: any = rawInput?.[Object.entries(rawInput)[0][0]];
-
+  console.log("TEST2: "+ JSON.stringify(current));
   for (const step of path) {
     if (Array.isArray(current)) {
       // Automatyczna konwersja tablicy obiektów z pojedynczym kluczem na zwykły obiekt
@@ -626,9 +632,12 @@ function GET(path: (string | number)[]): any {
   return current;
 }
 
+// TODO: trzeba zrobić aby działało lepiej, czyli nie ważne jak w bloku użyjesz to zwróci typ bloku który jest w x inpucie
 function dataTypeOfInput(input: string){
-  if(devMode)console.log(`Sprawdzamy typ inputu: ${input}`);
-  const blockInInput = Object.entries(GET([input])[0])[0][0];
+  if(devMode) console.log(`Sprawdzamy typ inputu: ${input}`);
+  console.log("test: "+GET([input]));
+  const blockInInput = Object.entries(GET([input])[0])[0][0]; // !  tu jest błąd!
+  console.log("Znajduje się tam blok: "+ blockInInput)
   const fileTEXT = readFileFromZip(filePath, blockPathMap[blockInInput]);
   if(fileTEXT){
     const file = parser.parse(fileTEXT)
@@ -640,13 +649,14 @@ function dataTypeOfInput(input: string){
 
         const data = Object.entries(file[i])[0][1] as any[];
         if(data?.[0]?.["#text"]){
-          if(devMode)
-          console.log("Typ jest sztywnie narzucony: "+data?.[0]?.["#text"]+"\n")
+
+          if(devMode) console.log("Typ jest sztywnie narzucony: "+data?.[0]?.["#text"]+"\n")
           return data?.[0]?.["#text"]
-          
+
         }else if(data?.[0]?.["cdata"]){
-          if(devMode)
-          console.log("Typ jest określany przez kod");
+
+          if(devMode) console.log("Typ jest określany przez kod");
+
           const code = data?.[0]?.["cdata"]?.[0]?.["#text"].trim();
           //const returnType = new Function(code)(); // działa jak eval, ale obsługuje "return"
           try {
@@ -656,7 +666,9 @@ function dataTypeOfInput(input: string){
             if(devMode)
             console.error("Błąd: podczas evala typu:", e);
           }
+
         }
+
 
       }
     }
@@ -679,7 +691,7 @@ function isThereSpecificBlockInTheInput(input: string, nameOfBlock: string){
 }
 
 function addToModuleFile(data: string){
-  if(devMode)console.log("dodano do modułu: "+loadedModuleName);
+  console.log("dodano do modułu: "+loadedModuleName);
   if(moduleFiles[loadedModuleName] == undefined){
     moduleFiles[loadedModuleName] = "";
   }
