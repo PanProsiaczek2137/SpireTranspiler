@@ -57,7 +57,7 @@ async function build(fromScratch: boolean){
     const entries:any = Object.entries(moduleFiles);
     for(let i = 0; i < entries.length; i++){
       const file = fs.readFileSync(mainFile, 'utf-8');
-      fs.writeFileSync(mainFile, file + `mod ${entries[i][0]};\n`);
+      fs.writeFileSync(mainFile, file + `mod ${entries[i][0]};\npub use crate::${entries[i][0]}::*;\n`);
     }
 
     let file = fs.readFileSync(mainFile, 'utf-8');

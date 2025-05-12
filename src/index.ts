@@ -14,6 +14,7 @@
 // * zrobić że jak wygeneruje już kod to tworzy plik i sam go kompiluje na wykonywalny
 // ! przyśpieszyć program aby za każdym blokiem nie czytał zipa tylko raz zczytał i se go zapisał w pamięci cash (zmiennej)
 // ? Sprawdzić blok math_operation. Zmienić aby blok convert_int_to_str itp były jednym blokiem convert. Dodać block random. a no i jeszcze create_variable
+// ! czy convert_type powinien sprawdzać typ bezpośredni
 
 // TODO: dodać tag do bloków: <whenRequire>kod</whenRequire> będzie to mówiło kiedy input jest require (nie tylko true/false) no i tagi które zmieniają deafult, canYouPutBlockIn, valueList, placeholder itd
 // TODO: ogarnąć wszystkie new fn (mają znak "(!)") tak aby zawierały takie same funkcje/zmienne dla każdej
@@ -725,4 +726,8 @@ function stripQuotes(str: string): string {
     return str.slice(1, -1);
   }
   return str;
+}
+
+function whatTypeInputNeed(inputName: string){
+  // !!!!!
 }
